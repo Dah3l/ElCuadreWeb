@@ -139,12 +139,34 @@ export default function App() {
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('darkMode') === 'true');
   const [storeName, setStoreName] = useState('Mi Negocio');
   const [exchangeRate, setExchangeRate] = useState(120);
+  const [dbError, setDbError] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoading(false);
-    });
+    const initApp = async () => {
+      try {
+        // Verificar conexión a Supabase y que las tablas existan
+        const { error: dbCheckError } = await supabase.from('settings').select('count').limit(1);
+        if (dbCheckError) {
+          console.error('Error de base de datos:', dbCheckError);
+          if (dbCheckError.message?.includes('does not exist') || dbCheckError.code === '42P01') {
+            setDbError('Las tablas de la base de datos no existen. Ejecuta el archivo schema.sql en el SQL Editor de Supabase.');
+          } else {
+            setDbError(`Error de conexión: ${dbCheckError.message}`);
+          }
+        }
+
+        const { data: { session } } = await supabase.auth.getSession();
+        setSession(session);
+      } catch (err) {
+        console.error('Error inicializando app:', err);
+        setDbError('Error de conexión con Supabase. Verifica tu configuración.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initApp();
+    
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });
@@ -161,10 +183,18 @@ export default function App() {
 
   const refreshSettings = async () => {
     if (!session) return;
-    const { data } = await supabase.from('settings').select('*').eq('user_id', session.user.id).single();
-    if (data) {
-      setStoreName(data.store_name || 'Mi Negocio');
-      setExchangeRate(data.exchange_rate || 120);
+    try {
+      const { data, error } = await supabase.from('settings').select('*').eq('user_id', session.user.id).maybeSingle();
+      if (error) {
+        console.error('Error cargando settings:', error);
+        return;
+      }
+      if (data) {
+        setStoreName(data.store_name || 'Mi Negocio');
+        setExchangeRate(data.exchange_rate || 120);
+      }
+    } catch (err) {
+      console.error('Error en refreshSettings:', err);
     }
   };
 
@@ -178,6 +208,43 @@ export default function App() {
         <div className="text-center">
           <div className="text-4xl mb-2 animate-bounce">🧮</div>
           <p className="text-gray-500">Cargando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (dbError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-900 to-red-700 p-4">
+        <div className="w-full max-w-md animate-slide-up">
+          <div className="text-center mb-6">
+            <div className="text-5xl mb-3">🚫</div>
+            <h1 className="text-2xl font-bold text-white">Error de Configuración</h1>
+          </div>
+          <div className="bg-white rounded-2xl p-6 shadow-xl">
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
+              <p className="font-semibold mb-1">⚠️ {dbError}</p>
+            </div>
+            <div className="space-y-3 text-sm text-gray-600">
+              <p className="font-semibold">Pasos para solucionar:</p>
+              <ol className="list-decimal list-inside space-y-1">
+                <li>Ve a tu proyecto en Supabase</li>
+                <li>Abre el <strong>SQL Editor</strong></li>
+                <li>Crea una nueva consulta</li>
+                <li>Copia y pega el contenido de <code className="bg-gray-100 px-1 rounded">schema.sql</code></li>
+                <li>Haz clic en <strong>Run</strong></li>
+              </ol>
+              <p className="text-xs text-gray-400 mt-3">
+                Después de ejecutar el SQL, recarga esta página.
+              </p>
+            </div>
+            <button
+              onClick={() => window.location.reload()}
+              className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg transition-colors"
+            >
+              Recargar página
+            </button>
+          </div>
         </div>
       </div>
     );
