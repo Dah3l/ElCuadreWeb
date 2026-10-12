@@ -10,10 +10,11 @@ interface Debt {
   currency: string;
   is_paid: boolean;
   created_at: string;
+  user_name?: string;
 }
 
 export default function FiadosScreen() {
-  const { session } = useApp();
+  const { session, userName, userEmail } = useApp();
   const [debts, setDebts] = useState<Debt[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [filter, setFilter] = useState<'all' | 'por_cobrar' | 'por_pagar'>('all');
@@ -45,6 +46,7 @@ export default function FiadosScreen() {
 
     const { error } = await supabase.from('debts').insert({
       user_id: session!.user.id,
+      user_name: userName || userEmail,
       person_name: personName.trim(),
       type,
       amount: parseFloat(amount),
@@ -173,6 +175,7 @@ export default function FiadosScreen() {
                 </p>
                 <p className="text-xs text-gray-400 mt-0.5">
                   {new Date(d.created_at).toLocaleDateString('es-ES')}
+                  {d.user_name && <span className="ml-2 text-blue-500">· 👤 {d.user_name}</span>}
                 </p>
               </div>
               <div className="flex gap-1">

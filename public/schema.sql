@@ -11,6 +11,7 @@
 CREATE TABLE IF NOT EXISTS settings (
   user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   store_name TEXT DEFAULT 'Mi Negocio',
+  user_name TEXT DEFAULT '',
   exchange_rate DECIMAL(10,2) DEFAULT 120.00,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -34,6 +35,7 @@ CREATE TABLE IF NOT EXISTS products (
 CREATE TABLE IF NOT EXISTS sales (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_name TEXT DEFAULT '',
   total DECIMAL(10,2) NOT NULL,
   currency TEXT NOT NULL DEFAULT 'CUP' CHECK (currency IN ('CUP', 'USD')),
   items JSONB NOT NULL DEFAULT '[]',
@@ -46,6 +48,7 @@ CREATE TABLE IF NOT EXISTS sales (
 CREATE TABLE IF NOT EXISTS expenses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_name TEXT DEFAULT '',
   concept TEXT NOT NULL,
   amount DECIMAL(10,2) NOT NULL,
   currency TEXT NOT NULL DEFAULT 'CUP' CHECK (currency IN ('CUP', 'USD')),
@@ -58,6 +61,7 @@ CREATE TABLE IF NOT EXISTS expenses (
 CREATE TABLE IF NOT EXISTS cash_closures (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_name TEXT DEFAULT '',
   date DATE NOT NULL DEFAULT CURRENT_DATE,
   expected_amount DECIMAL(10,2) DEFAULT 0,
   actual_amount DECIMAL(10,2) DEFAULT 0,
@@ -71,6 +75,7 @@ CREATE TABLE IF NOT EXISTS cash_closures (
 CREATE TABLE IF NOT EXISTS debts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_name TEXT DEFAULT '',
   person_name TEXT NOT NULL,
   type TEXT NOT NULL DEFAULT 'por_cobrar' CHECK (type IN ('por_cobrar', 'por_pagar')),
   amount DECIMAL(10,2) NOT NULL,

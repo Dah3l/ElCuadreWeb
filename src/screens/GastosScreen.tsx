@@ -8,10 +8,11 @@ interface Expense {
   concept: string;
   amount: number;
   currency: string;
+  user_name?: string;
 }
 
 export default function GastosScreen() {
-  const { session } = useApp();
+  const { session, userName, userEmail } = useApp();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [concept, setConcept] = useState('');
@@ -42,6 +43,7 @@ export default function GastosScreen() {
 
     const { error } = await supabase.from('expenses').insert({
       user_id: session!.user.id,
+      user_name: userName || userEmail,
       concept: concept.trim(),
       amount: parseFloat(amount),
       currency,
@@ -130,6 +132,7 @@ export default function GastosScreen() {
               <p className="font-medium text-gray-800 dark:text-white">{exp.concept}</p>
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 {new Date(exp.created_at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                {exp.user_name && <span className="ml-2 text-blue-500">· 👤 {exp.user_name}</span>}
               </p>
             </div>
             <div className="flex items-center gap-2">

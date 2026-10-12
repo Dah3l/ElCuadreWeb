@@ -19,6 +19,8 @@ interface AppContextType {
   exchangeRate: number;
   refreshSettings: () => void;
   navigateTo: (tab: Tab) => void;
+  userName: string;
+  userEmail: string;
 }
 export const AppContext = createContext<AppContextType>({} as AppContextType);
 export const useApp = () => useContext(AppContext);
@@ -141,6 +143,8 @@ export default function App() {
   const [storeName, setStoreName] = useState('Mi Negocio');
   const [exchangeRate, setExchangeRate] = useState(120);
   const [dbError, setDbError] = useState<string | null>(null);
+  const [userName, setUserName] = useState('');
+  const [userEmail, setUserEmail] = useState('');
 
   useEffect(() => {
     const initApp = async () => {
@@ -158,6 +162,9 @@ export default function App() {
 
         const { data: { session } } = await supabase.auth.getSession();
         setSession(session);
+        if (session?.user) {
+          setUserEmail(session.user.email || '');
+        }
       } catch (err) {
         console.error('Error inicializando app:', err);
         setDbError('Error de conexión con Supabase. Verifica tu configuración.');
@@ -170,6 +177,12 @@ export default function App() {
     
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      if (session?.user) {
+        setUserEmail(session.user.email || '');
+      } else {
+        setUserEmail('');
+        setUserName('');
+      }
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -195,6 +208,7 @@ export default function App() {
       if (data) {
         setStoreName(data.store_name || 'Mi Negocio');
         setExchangeRate(data.exchange_rate || 120);
+        setUserName(data.user_name || '');
       }
     } catch (err) {
       console.error('Error en refreshSettings:', err);
@@ -269,12 +283,14 @@ export default function App() {
   };
 
   return (
-    <AppContext.Provider value={{ session, darkMode, toggleDarkMode, storeName, exchangeRate, refreshSettings, navigateTo }}>
+    <AppContext.Provider value={{ session, darkMode, toggleDarkMode, storeName, exchangeRate, refreshSettings, navigateTo, userName, userEmail }}>
       <div className={`h-full flex flex-col ${darkMode ? 'dark bg-gray-900' : 'bg-gray-50'}`}>
         <header className="bg-blue-700 dark:bg-gray-800 text-white px-4 py-3 flex items-center justify-between shrink-0 shadow-md">
           <div>
             <h1 className="text-lg font-bold">{storeName}</h1>
-            <p className="text-blue-200 dark:text-gray-400 text-xs">El Cuadre</p>
+            <p className="text-blue-200 dark:text-gray-400 text-xs">
+              👤 {userName || userEmail}
+            </p>
           </div>
           <button
             onClick={() => supabase.auth.signOut()}
