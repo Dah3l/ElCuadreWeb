@@ -22,10 +22,11 @@ interface Sale {
   total: number;
   currency: string;
   items: SaleItem[];
+  user_name?: string;
 }
 
 export default function VentasScreen() {
-  const { session, exchangeRate } = useApp();
+  const { session, exchangeRate, userName, userEmail } = useApp();
   const [sales, setSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -96,6 +97,7 @@ export default function VentasScreen() {
       .from('sales')
       .insert({
         user_id: session!.user.id,
+        user_name: userName || userEmail,
         total: cartTotal,
         currency,
         items: cart.map(c => ({ product_id: c.product_id, name: c.name, quantity: c.quantity, price: c.price })),
@@ -226,6 +228,7 @@ export default function VentasScreen() {
                 </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   {new Date(sale.created_at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                  {sale.user_name && <span className="ml-2 text-blue-500">· 👤 {sale.user_name}</span>}
                 </p>
               </div>
               <span className={`text-xs px-2 py-0.5 rounded-full ${sale.currency === 'USD' ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'}`}>

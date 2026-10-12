@@ -8,10 +8,11 @@ interface CashClosure {
   expected_amount: number;
   actual_amount: number;
   notes: string;
+  user_name?: string;
 }
 
 export default function CajaScreen() {
-  const { session, exchangeRate } = useApp();
+  const { session, exchangeRate, userName, userEmail } = useApp();
   const [closures, setClosures] = useState<CashClosure[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [actualAmount, setActualAmount] = useState('');
@@ -77,6 +78,7 @@ export default function CajaScreen() {
     const today = new Date().toISOString().split('T')[0];
     const { error } = await supabase.from('cash_closures').insert({
       user_id: session!.user.id,
+      user_name: userName || userEmail,
       date: today,
       expected_amount: expectedAmount,
       actual_amount: parseFloat(actualAmount),
@@ -169,6 +171,7 @@ export default function CajaScreen() {
                 <div>
                   <p className="text-sm font-medium text-gray-800 dark:text-white">
                     {new Date(c.date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
+                    {c.user_name && <span className="ml-2 text-blue-500 text-xs">· 👤 {c.user_name}</span>}
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
                     Esperado: {c.expected_amount.toLocaleString()} · Contado: {c.actual_amount.toLocaleString()}

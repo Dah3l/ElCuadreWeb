@@ -22,6 +22,16 @@ App web para que tiendas de comida y aseo manejen ventas, gastos, inventario, fi
 4. Haz clic en **Run** (o Ctrl+Enter).
 5. Verifica que todas las tablas se crearon en **Table Editor**.
 
+**Nota:** Si ya tienes las tablas creadas de una versión anterior, ejecuta este SQL para agregar las columnas de trazabilidad:
+
+```sql
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS user_name TEXT DEFAULT '';
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS user_name TEXT DEFAULT '';
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS user_name TEXT DEFAULT '';
+ALTER TABLE cash_closures ADD COLUMN IF NOT EXISTS user_name TEXT DEFAULT '';
+ALTER TABLE debts ADD COLUMN IF NOT EXISTS user_name TEXT DEFAULT '';
+```
+
 ### 3. Activar autenticación por email
 
 1. Ve a **Authentication > Providers** en el menú lateral.
@@ -90,7 +100,19 @@ Abre la URL de tu sitio en Cloudflare Pages. Regístrate con tu email y empieza 
 | **Caja** | Cierre diario: monto esperado vs contado, diferencia |
 | **Fiados** | Control de deudas: quién debe y a quién se debe |
 | **Reportes** | Gráficos de ganancia diaria/semanal/mensual + productos top |
-| **Ajustes** | Nombre del negocio, tasa de cambio USD→CUP, modo oscuro |
+| **Ajustes** | Tu nombre, nombre del negocio, tasa de cambio USD→CUP, modo oscuro |
+
+## 👤 Trazabilidad de Usuarios
+
+Cada operación queda documentada con el nombre del usuario que la realizó:
+
+- **Header**: Muestra el nombre del usuario conectado en todo momento
+- **Ventas**: Cada venta muestra quién la registró
+- **Gastos**: Cada gasto muestra quién lo registró
+- **Cierres de caja**: Cada cierre muestra quién lo hizo
+- **Fiados**: Cada registro de deuda muestra quién lo creó
+
+El nombre se configura en **Ajustes** y se guarda junto a cada operación para auditoría y control de responsabilidades.
 
 ---
 

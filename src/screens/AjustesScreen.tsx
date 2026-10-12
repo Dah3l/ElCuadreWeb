@@ -3,8 +3,9 @@ import { supabase, getErrorMessage } from '../lib/supabase';
 import { useApp } from '../App';
 
 export default function AjustesScreen() {
-  const { session, darkMode, toggleDarkMode, refreshSettings } = useApp();
+  const { session, darkMode, toggleDarkMode, refreshSettings, userEmail } = useApp();
   const [storeName, setStoreName] = useState('');
+  const [userName, setUserName] = useState('');
   const [exchangeRate, setExchangeRate] = useState('120');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -24,6 +25,7 @@ export default function AjustesScreen() {
 
     if (data) {
       setStoreName(data.store_name || '');
+      setUserName(data.user_name || '');
       setExchangeRate(String(data.exchange_rate || 120));
     }
     setLoading(false);
@@ -46,6 +48,7 @@ export default function AjustesScreen() {
       .upsert({
         user_id: session!.user.id,
         store_name: storeName.trim() || 'Mi Negocio',
+        user_name: userName.trim(),
         exchange_rate: rate,
       }, { onConflict: 'user_id' });
 
@@ -71,6 +74,23 @@ export default function AjustesScreen() {
       {message && (
         <div className="bg-green-50 border border-green-200 text-green-700 px-3 py-2 rounded-lg text-sm">{message}</div>
       )}
+
+      {/* User Name */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700 space-y-3">
+        <h3 className="font-semibold text-gray-700 dark:text-gray-200 text-sm">👤 Tu Nombre</h3>
+        <input
+          value={userName}
+          onChange={e => setUserName(e.target.value)}
+          placeholder="Ej: Fulano Pérez"
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white text-sm outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <p className="text-xs text-gray-400">
+          Se mostrará en cada operación que registres (ventas, gastos, cierres, etc.)
+        </p>
+        <p className="text-xs text-blue-500">
+          📧 Email: {userEmail}
+        </p>
+      </div>
 
       {/* Store Name */}
       <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700 space-y-3">
