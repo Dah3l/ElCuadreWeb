@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useApp } from '../App';
 
 export default function HoyScreen() {
-  const { session, exchangeRate } = useApp();
+  const { session, exchangeRate, navigateTo } = useApp();
   const [ventasHoy, setVentasHoy] = useState<number>(0);
   const [gastosHoy, setGastosHoy] = useState<number>(0);
   const [ventasCount, setVentasCount] = useState(0);
@@ -65,21 +65,27 @@ export default function HoyScreen() {
 
       {/* Cards */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-xl p-4">
+        <button
+          onClick={() => navigateTo('ventas')}
+          className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-xl p-4 text-left hover:bg-green-100 dark:hover:bg-green-900/50 transition-colors active:scale-95"
+        >
           <p className="text-xs text-green-600 dark:text-green-400 font-medium">💰 Ventas</p>
           <p className="text-2xl font-bold text-green-700 dark:text-green-300 mt-1">
             {ventasHoy.toLocaleString()}
           </p>
           <p className="text-xs text-green-500 dark:text-green-400">CUP ({ventasCount} ventas)</p>
-        </div>
+        </button>
 
-        <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl p-4">
+        <button
+          onClick={() => navigateTo('gastos')}
+          className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl p-4 text-left hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors active:scale-95"
+        >
           <p className="text-xs text-red-600 dark:text-red-400 font-medium">💸 Gastos</p>
           <p className="text-2xl font-bold text-red-700 dark:text-red-300 mt-1">
             {gastosHoy.toLocaleString()}
           </p>
           <p className="text-xs text-red-500 dark:text-red-400">CUP</p>
-        </div>
+        </button>
       </div>
 
       <div className={`rounded-xl p-4 border ${ganancia >= 0 ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800' : 'bg-orange-50 dark:bg-orange-900/30 border-orange-200 dark:border-orange-800'}`}>
@@ -95,24 +101,21 @@ export default function HoyScreen() {
       <div className="space-y-3 pt-2">
         <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-300">Acciones rápidas</h3>
         <button
-          onClick={() => {
-            const event = new CustomEvent('navigate', { detail: 'ventas' });
-            window.dispatchEvent(event);
-          }}
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-4 rounded-xl text-lg transition-colors shadow-md"
+          onClick={() => navigateTo('ventas')}
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-4 rounded-xl text-lg transition-colors shadow-md active:scale-95"
         >
           💰 Nueva Venta
         </button>
         <div className="grid grid-cols-2 gap-3">
           <button
-            onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'gastos' }))}
-            className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 py-3 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            onClick={() => navigateTo('gastos')}
+            className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 py-3 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors active:scale-95"
           >
             💸 Registrar Gasto
           </button>
           <button
-            onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'fiados' }))}
-            className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 py-3 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            onClick={() => navigateTo('fiados')}
+            className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 py-3 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors active:scale-95"
           >
             📝 Ver Fiados
           </button>
