@@ -6,9 +6,30 @@
     <meta name="theme-color" content="#1e40af" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>El Cuadre - Control de Finanzas</title>
+    <style>
+      body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f3f4f6; }
+      #root:empty::after {
+        content: '⏳ Cargando El Cuadre...';
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        font-size: 18px;
+        color: #6b7280;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <div style="display:flex;align-items:center;justify-content:center;height:100vh;padding:20px;text-align:center;">
+        <div>
+          <div style="font-size:48px;margin-bottom:16px;">🧮</div>
+          <h1 style="color:#1f2937;margin:0 0 8px;">El Cuadre</h1>
+          <p style="color:#6b7280;">Esta aplicación necesita JavaScript habilitado para funcionar.</p>
+        </div>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
