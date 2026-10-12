@@ -1,15 +1,36 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../App';
+import { formatMoney, toCUP, exportToCSV } from '../lib/utils';
+import { exportToPDF } from '../lib/pdf';
 
 type Period = 'day' | 'week' | 'month';
 
+interface SaleItem {
+  product_id: string;
+  name: string;
+  quantity: number;
+  price: number;
+  cost: number;
+}
+
 export default function ReportesScreen() {
-  const { session, exchangeRate } = useApp();
+  const { session, exchangeRate, storeName } = useApp();
   const [period, setPeriod] = useState<Period>('week');
   const [profitData, setProfitData] = useState<{ label: string; profit: number }[]>([]);
-  const [topProducts, setTopProducts] = useState<{ name: string; qty: number }[]>([]);
+  const [topProducts, setTopProducts] = useState<{ name: string; qty: number; revenue: number; cost: number }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState({
+    totalVentasCUP: 0,
+    totalVentasUSD: 0,
+    totalGastosCUP: 0,
+    totalGastosUSD: 0,
+    totalCosto: 0,
+    gananciaNeta: 0,
+    ventasBrutas: 0,
+  });
+  const [allSales, setAllSales] = useState<any[]>([]);
+  const [allExpenses, setAllExpenses] = useState<any[]>([]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasRef2 = useRef<HTMLCanvasElement>(null);
 
@@ -18,11 +39,11 @@ export default function ReportesScreen() {
   }, [session, period]);
 
   useEffect(() => {
-    drawChart(canvasRef.current, profitData, 'Ganancia (CUP)', '#3b82f6');
+    drawChart(canvasRef.current, profitData, '#3b82f6');
   }, [profitData]);
 
   useEffect(() => {
-    drawChart(canvasRef2.current, topProducts.map(p => ({ label: p.name, profit: p.qty })), 'Unidades vendidas', '#059669');
+    drawChart(canvasRef2.current, topProducts.map(p => ({ label: p.name, profit: p.qty })), '#059669');
   }, [topProducts]);
 
   const loadReportData = async () => {
@@ -50,52 +71,97 @@ export default function ReportesScreen() {
       .eq('user_id', session!.user.id)
       .gte('created_at', startDate.toISOString());
 
+    setAllSales(ventas || []);
+    setAllExpenses(gastos || []);
+
     // Group by date
-    const dailyData: { [key: string]: { ventas: number; gastos: number } } = {};
+    const dailyData: { [key: string]: { ventas: number; gastos: number; costo: number } } = {};
+
+    let totalVentasCUP = 0, totalVentasUSD = 0;
+    let totalGastosCUP = 0, totalGastosUSD = 0;
+    let totalCosto = 0;
 
     (ventas || []).forEach(v => {
       const date = v.created_at.split('T')[0];
-      if (!dailyData[date]) dailyData[date] = { ventas: 0, gastos: 0 };
-      const amount = v.currency === 'USD' ? v.total * exchangeRate : v.total;
+      if (!dailyData[date]) dailyData[date] = { ventas: 0, gastos: 0, costo: 0 };
+      
+      const amount = toCUP(v.total, v.currency as 'CUP' | 'USD', exchangeRate);
       dailyData[date].ventas += amount;
+      
+      if (v.currency === 'USD') totalVentasUSD += v.total;
+      else totalVentasCUP += v.total;
+
+      // Calcular costo de productos vendidos
+      const items = v.items as SaleItem[];
+      if (items) {
+        items.forEach(item => {
+          const cost = item.cost || 0;
+          const costInCUP = v.currency === 'USD' ? cost * item.quantity * exchangeRate : cost * item.quantity;
+          dailyData[date].costo += costInCUP;
+          totalCosto += costInCUP;
+        });
+      }
     });
 
     (gastos || []).forEach(g => {
       const date = g.created_at.split('T')[0];
-      if (!dailyData[date]) dailyData[date] = { ventas: 0, gastos: 0 };
-      const amount = g.currency === 'USD' ? g.amount * exchangeRate : g.amount;
+      if (!dailyData[date]) dailyData[date] = { ventas: 0, gastos: 0, costo: 0 };
+      const amount = toCUP(g.amount, g.currency as 'CUP' | 'USD', exchangeRate);
       dailyData[date].gastos += amount;
+      
+      if (g.currency === 'USD') totalGastosUSD += g.amount;
+      else totalGastosCUP += g.amount;
     });
 
     const sortedDates = Object.keys(dailyData).sort();
     const profitResult = sortedDates.map(date => ({
       label: new Date(date + 'T12:00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }),
-      profit: dailyData[date].ventas - dailyData[date].gastos,
+      profit: dailyData[date].ventas - dailyData[date].gastos - dailyData[date].costo,
     }));
 
     setProfitData(profitResult);
 
     // Top products
-    const productCount: { [key: string]: number } = {};
+    const productStats: { [key: string]: { qty: number; revenue: number; cost: number } } = {};
     (ventas || []).forEach(v => {
-      const items = v.items as { name: string; quantity: number }[];
+      const items = v.items as SaleItem[];
       if (items) {
         items.forEach(item => {
-          productCount[item.name] = (productCount[item.name] || 0) + item.quantity;
+          if (!productStats[item.name]) productStats[item.name] = { qty: 0, revenue: 0, cost: 0 };
+          productStats[item.name].qty += item.quantity;
+          const revenue = v.currency === 'USD' ? item.price * item.quantity * exchangeRate : item.price * item.quantity;
+          const cost = v.currency === 'USD' ? (item.cost || 0) * item.quantity * exchangeRate : (item.cost || 0) * item.quantity;
+          productStats[item.name].revenue += revenue;
+          productStats[item.name].cost += cost;
         });
       }
     });
 
-    const sorted = Object.entries(productCount)
-      .sort((a, b) => b[1] - a[1])
+    const sorted = Object.entries(productStats)
+      .sort((a, b) => b[1].qty - a[1].qty)
       .slice(0, 8)
-      .map(([name, qty]) => ({ name, qty }));
+      .map(([name, stats]) => ({ name, ...stats }));
 
     setTopProducts(sorted);
+
+    const ventasBrutas = totalVentasCUP + (totalVentasUSD * exchangeRate);
+    const gastosTotal = totalGastosCUP + (totalGastosUSD * exchangeRate);
+    const gananciaNeta = ventasBrutas - totalCosto - gastosTotal;
+
+    setSummary({
+      totalVentasCUP,
+      totalVentasUSD,
+      totalGastosCUP,
+      totalGastosUSD,
+      totalCosto,
+      gananciaNeta,
+      ventasBrutas,
+    });
+
     setLoading(false);
   };
 
-  const drawChart = (canvas: HTMLCanvasElement | null, data: { label: string; profit: number }[], label: string, color: string) => {
+  const drawChart = (canvas: HTMLCanvasElement | null, data: { label: string; profit: number }[], color: string) => {
     if (!canvas || data.length === 0) return;
 
     const ctx = canvas.getContext('2d');
@@ -157,7 +223,55 @@ export default function ReportesScreen() {
     });
   };
 
-  if (loading) return <div className="text-center py-8 text-gray-500">Cargando reportes...</div>;
+  const handleExportCSV = () => {
+    const periodLabel = period === 'day' ? 'Hoy' : period === 'week' ? 'Semana' : 'Mes';
+    
+    // Ventas
+    const ventasRows = allSales.map(s => ({
+      fecha: new Date(s.created_at).toLocaleString('es-ES'),
+      total: s.total,
+      moneda: s.currency,
+      items: (s.items as SaleItem[]).map(i => `${i.name} x${i.quantity}`).join('; '),
+    }));
+    exportToCSV(`${storeName}_ventas_${periodLabel}`, ventasRows);
+
+    // Gastos
+    const gastosRows = allExpenses.map(g => ({
+      fecha: new Date(g.created_at).toLocaleString('es-ES'),
+      concepto: g.concept,
+      monto: g.amount,
+      moneda: g.currency,
+    }));
+    exportToCSV(`${storeName}_gastos_${periodLabel}`, gastosRows);
+  };
+
+  const handleExportPDF = async () => {
+    const periodLabel = period === 'day' ? 'Hoy' : period === 'week' ? 'Semana' : 'Mes';
+    const title = `Reporte ${periodLabel} - ${storeName}`;
+    
+    const data = [
+      { label: 'Total Ventas (brutas)', value: formatMoney(summary.ventasBrutas, 'CUP') },
+      { label: 'Ventas CUP', value: formatMoney(summary.totalVentasCUP, 'CUP') },
+      { label: 'Ventas USD', value: formatMoney(summary.totalVentasUSD, 'USD') },
+      { label: 'Total Gastos', value: formatMoney(summary.totalGastosCUP + summary.totalGastosUSD * exchangeRate, 'CUP') },
+      { label: 'Costo productos vendidos', value: formatMoney(summary.totalCosto, 'CUP') },
+      { label: 'Ganancia neta', value: formatMoney(summary.gananciaNeta, 'CUP') },
+    ];
+
+    const tableData = {
+      headers: ['Producto', 'Cantidad', 'Ingreso', 'Costo'],
+      rows: topProducts.map(p => [
+        p.name,
+        String(p.qty),
+        formatMoney(p.revenue, 'CUP'),
+        formatMoney(p.cost, 'CUP'),
+      ]),
+    };
+
+    await exportToPDF(title, data, tableData);
+  };
+
+  if (loading) return <div className="text-center py-8 text-gray-500 dark:text-gray-400">Cargando reportes...</div>;
 
   return (
     <div className="animate-fade-in space-y-4">
@@ -176,9 +290,49 @@ export default function ReportesScreen() {
         ))}
       </div>
 
+      {/* Resumen con desglose */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">📋 Desglose del período</h3>
+        <div className="space-y-1 text-xs">
+          <div className="flex justify-between text-gray-600 dark:text-gray-300">
+            <span>Ventas CUP:</span>
+            <span className="text-green-600 dark:text-green-400">+{formatMoney(summary.totalVentasCUP, 'CUP')}</span>
+          </div>
+          <div className="flex justify-between text-gray-600 dark:text-gray-300">
+            <span>Ventas USD:</span>
+            <span className="text-green-600 dark:text-green-400">+{formatMoney(summary.totalVentasUSD, 'USD')} ({formatMoney(summary.totalVentasUSD * exchangeRate, 'CUP')})</span>
+          </div>
+          <div className="flex justify-between font-semibold text-gray-700 dark:text-gray-200 border-t border-gray-200 dark:border-gray-600 pt-1">
+            <span>Total ventas (brutas):</span>
+            <span className="text-green-600 dark:text-green-400">{formatMoney(summary.ventasBrutas, 'CUP')}</span>
+          </div>
+          <div className="flex justify-between text-gray-600 dark:text-gray-300">
+            <span>Costo productos vendidos:</span>
+            <span className="text-orange-600 dark:text-orange-400">-{formatMoney(summary.totalCosto, 'CUP')}</span>
+          </div>
+          <div className="flex justify-between text-gray-600 dark:text-gray-300">
+            <span>Gastos CUP:</span>
+            <span className="text-red-600 dark:text-red-400">-{formatMoney(summary.totalGastosCUP, 'CUP')}</span>
+          </div>
+          <div className="flex justify-between text-gray-600 dark:text-gray-300">
+            <span>Gastos USD:</span>
+            <span className="text-red-600 dark:text-red-400">-{formatMoney(summary.totalGastosUSD, 'USD')} (-{formatMoney(summary.totalGastosUSD * exchangeRate, 'CUP')})</span>
+          </div>
+          <div className="flex justify-between font-bold text-gray-800 dark:text-white border-t border-gray-200 dark:border-gray-600 pt-1 mt-1">
+            <span>Ganancia neta:</span>
+            <span className={summary.gananciaNeta >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
+              {formatMoney(summary.gananciaNeta, 'CUP')}
+            </span>
+          </div>
+          <p className="text-[10px] text-gray-400 mt-1">
+            Fórmula: Ventas − Costo productos − Gastos = Ganancia neta
+          </p>
+        </div>
+      </div>
+
       {/* Profit Chart */}
       <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">📊 Ganancia por día</h3>
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">📊 Ganancia neta por día</h3>
         {profitData.length > 0 ? (
           <canvas
             ref={canvasRef}
@@ -204,7 +358,7 @@ export default function ReportesScreen() {
               {topProducts.map((p, i) => (
                 <div key={i} className="flex justify-between text-xs text-gray-600 dark:text-gray-300">
                   <span>{i + 1}. {p.name}</span>
-                  <span className="font-medium">{p.qty} uds</span>
+                  <span className="font-medium">{p.qty} uds · {formatMoney(p.revenue, 'CUP')}</span>
                 </div>
               ))}
             </div>
@@ -214,27 +368,22 @@ export default function ReportesScreen() {
         )}
       </div>
 
-      {/* Summary stats */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">📋 Resumen</h3>
-        <div className="space-y-1 text-sm">
-          <div className="flex justify-between text-gray-600 dark:text-gray-300">
-            <span>Total ventas:</span>
-            <span className="font-medium text-green-600 dark:text-green-400">
-              {profitData.reduce((s, d) => s + (d.profit > 0 ? d.profit : 0), 0).toLocaleString()} CUP
-            </span>
-          </div>
-          <div className="flex justify-between text-gray-600 dark:text-gray-300">
-            <span>Ganancia neta:</span>
-            <span className="font-medium text-blue-600 dark:text-blue-400">
-              {profitData.reduce((s, d) => s + d.profit, 0).toLocaleString()} CUP
-            </span>
-          </div>
-          <div className="flex justify-between text-gray-600 dark:text-gray-300">
-            <span>Productos vendidos:</span>
-            <span className="font-medium">{topProducts.reduce((s, p) => s + p.qty, 0)} unidades</span>
-          </div>
-        </div>
+      {/* Export buttons */}
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          onClick={handleExportCSV}
+          disabled={allSales.length === 0 && allExpenses.length === 0}
+          className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 py-3 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+        >
+          📊 Exportar CSV
+        </button>
+        <button
+          onClick={handleExportPDF}
+          disabled={profitData.length === 0}
+          className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 py-3 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+        >
+          📄 Exportar PDF
+        </button>
       </div>
     </div>
   );

@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react';
 import { supabase, getErrorMessage } from '../lib/supabase';
 import { useApp } from '../App';
+import { useToast } from '../components/Toast';
 
 export default function AjustesScreen() {
   const { session, darkMode, toggleDarkMode, refreshSettings, userEmail } = useApp();
+  const { showToast } = useToast();
   const [storeName, setStoreName] = useState('');
   const [userName, setUserName] = useState('');
   const [exchangeRate, setExchangeRate] = useState('120');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -34,7 +35,6 @@ export default function AjustesScreen() {
   const saveSettings = async () => {
     setSaving(true);
     setError('');
-    setMessage('');
 
     const rate = parseFloat(exchangeRate);
     if (isNaN(rate) || rate <= 0) {
@@ -55,14 +55,13 @@ export default function AjustesScreen() {
     if (error) {
       setError(getErrorMessage(error));
     } else {
-      setMessage('✓ Ajustes guardados');
+      showToast('✓ Ajustes guardados', 'success');
       refreshSettings();
-      setTimeout(() => setMessage(''), 3000);
     }
     setSaving(false);
   };
 
-  if (loading) return <div className="text-center py-8 text-gray-500">Cargando ajustes...</div>;
+  if (loading) return <div className="text-center py-8 text-gray-500 dark:text-gray-400">Cargando ajustes...</div>;
 
   return (
     <div className="animate-fade-in space-y-4">
@@ -70,9 +69,6 @@ export default function AjustesScreen() {
 
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm">⚠️ {error}</div>
-      )}
-      {message && (
-        <div className="bg-green-50 border border-green-200 text-green-700 px-3 py-2 rounded-lg text-sm">{message}</div>
       )}
 
       {/* User Name */}
@@ -147,7 +143,7 @@ export default function AjustesScreen() {
 
       {/* App Info */}
       <div className="text-center pt-4 space-y-1">
-        <p className="text-xs text-gray-400">El Cuadre v1.0</p>
+        <p className="text-xs text-gray-400">El Cuadre v1.1</p>
         <p className="text-xs text-gray-400">Control de finanzas para pequeños negocios</p>
         <p className="text-xs text-gray-400">Hecho con ❤️ para Cuba</p>
       </div>

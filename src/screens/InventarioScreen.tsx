@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase, getErrorMessage } from '../lib/supabase';
 import { useApp } from '../App';
+import { useToast } from '../components/Toast';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { formatMoney } from '../lib/utils';
 
 interface Product {
   id: string;
@@ -12,6 +15,7 @@ interface Product {
 
 export default function InventarioScreen() {
   const { session } = useApp();
+  const { showToast } = useToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -21,6 +25,7 @@ export default function InventarioScreen() {
   const [stock, setStock] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   useEffect(() => {
     if (session) loadProducts();
@@ -62,22 +67,30 @@ export default function InventarioScreen() {
     if (editingId) {
       const { error } = await supabase.from('products').update(productData).eq('id', editingId);
       if (error) { setError(getErrorMessage(error)); return; }
+      showToast('✓ Producto actualizado', 'success');
     } else {
       const { error } = await supabase.from('products').insert(productData);
       if (error) { setError(getErrorMessage(error)); return; }
+      showToast('✓ Producto agregado', 'success');
     }
 
     resetForm();
     loadProducts();
   };
 
-  const deleteProduct = async (id: string) => {
-    if (!confirm('¿Eliminar este producto?')) return;
-    await supabase.from('products').delete().eq('id', id);
-    loadProducts();
+  const deleteProduct = async () => {
+    if (!deleteId) return;
+    const { error } = await supabase.from('products').delete().eq('id', deleteId);
+    if (error) {
+      showToast('Error al eliminar: ' + getErrorMessage(error), 'error');
+    } else {
+      showToast('Producto eliminado', 'info');
+      loadProducts();
+    }
+    setDeleteId(null);
   };
 
-  if (loading) return <div className="text-center py-8 text-gray-500">Cargando inventario...</div>;
+  if (loading) return <div className="text-center py-8 text-gray-500 dark:text-gray-400">Cargando inventario...</div>;
 
   return (
     <div className="animate-fade-in space-y-4">
@@ -145,17 +158,27 @@ export default function InventarioScreen() {
                   {p.stock <= 5 && <span className="text-xs bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300 px-1.5 py-0.5 rounded">⚠️ Bajo</span>}
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                  Costo: {p.cost} · Precio: {p.price} · Stock: {p.stock}
+                  Costo: {formatMoney(p.cost, 'CUP')} · Precio: {formatMoney(p.price, 'CUP')} · Stock: {p.stock}
                 </p>
               </div>
               <div className="flex gap-1">
-                <button onClick={() => startEdit(p)} className="text-blue-500 p-1 text-sm">✏️</button>
-                <button onClick={() => deleteProduct(p.id)} className="text-red-500 p-1 text-sm">🗑️</button>
+                <button onClick={() => startEdit(p)} className="text-blue-500 p-1 text-sm hover:text-blue-700">✏️</button>
+                <button onClick={() => setDeleteId(p.id)} className="text-red-500 p-1 text-sm hover:text-red-700">🗑️</button>
               </div>
             </div>
           </div>
         ))}
       </div>
+
+      <ConfirmDialog
+        open={!!deleteId}
+        title="Eliminar producto"
+        message="¿Estás seguro de eliminar este producto? Esta acción no se puede deshacer."
+        confirmLabel="Eliminar"
+        danger
+        onConfirm={deleteProduct}
+        onCancel={() => setDeleteId(null)}
+      />
     </div>
   );
 }

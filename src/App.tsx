@@ -1,6 +1,7 @@
 import { useState, useEffect, createContext, useContext } from 'react';
 import { supabase, getErrorMessage } from './lib/supabase';
 import type { Session } from '@supabase/supabase-js';
+import { ToastProvider } from './components/Toast';
 import HoyScreen from './screens/HoyScreen';
 import VentasScreen from './screens/VentasScreen';
 import InventarioScreen from './screens/InventarioScreen';
@@ -17,10 +18,11 @@ interface AppContextType {
   toggleDarkMode: () => void;
   storeName: string;
   exchangeRate: number;
-  refreshSettings: () => void;
+  refreshSettings: () => Promise<void>;
   navigateTo: (tab: Tab) => void;
   userName: string;
   userEmail: string;
+  settingsLoaded: boolean;
 }
 export const AppContext = createContext<AppContextType>({} as AppContextType);
 export const useApp = () => useContext(AppContext);
@@ -138,6 +140,7 @@ function AuthScreen() {
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('hoy');
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('darkMode') === 'true');
   const [storeName, setStoreName] = useState('Mi Negocio');
@@ -146,10 +149,42 @@ export default function App() {
   const [userName, setUserName] = useState('');
   const [userEmail, setUserEmail] = useState('');
 
+  // Cargar settings y garantizar que estén disponibles antes de quitar loading
+  const loadSettings = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('settings')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (error) {
+        console.error('Error cargando settings:', error);
+      }
+      if (data) {
+        setStoreName(data.store_name || 'Mi Negocio');
+        setExchangeRate(data.exchange_rate || 120);
+        setUserName(data.user_name || '');
+      } else {
+        // Reset a valores por defecto si no hay settings
+        setStoreName('Mi Negocio');
+        setExchangeRate(120);
+        setUserName('');
+      }
+    } catch (err) {
+      console.error('Error en loadSettings:', err);
+    }
+    setSettingsLoaded(true);
+  };
+
+  const refreshSettings = async () => {
+    if (!session) return;
+    await loadSettings(session.user.id);
+  };
+
   useEffect(() => {
     const initApp = async () => {
       try {
-        // Verificar conexión a Supabase y que las tablas existan
+        // Verificar conexión a Supabase
         const { error: dbCheckError } = await supabase.from('settings').select('count').limit(1);
         if (dbCheckError) {
           console.error('Error de base de datos:', dbCheckError);
@@ -158,12 +193,16 @@ export default function App() {
           } else {
             setDbError(`Error de conexión: ${dbCheckError.message}`);
           }
+          setLoading(false);
+          return;
         }
 
         const { data: { session } } = await supabase.auth.getSession();
         setSession(session);
         if (session?.user) {
           setUserEmail(session.user.email || '');
+          // CRÍTICO: Cargar settings ANTES de quitar loading para evitar race condition
+          await loadSettings(session.user.id);
         }
       } catch (err) {
         console.error('Error inicializando app:', err);
@@ -175,13 +214,17 @@ export default function App() {
 
     initApp();
     
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session);
       if (session?.user) {
         setUserEmail(session.user.email || '');
+        await loadSettings(session.user.id);
       } else {
         setUserEmail('');
         setUserName('');
+        setStoreName('Mi Negocio');
+        setExchangeRate(120);
+        setSettingsLoaded(false);
       }
     });
     return () => subscription.unsubscribe();
@@ -194,30 +237,7 @@ export default function App() {
   }, [darkMode]);
 
   const toggleDarkMode = () => setDarkMode(!darkMode);
-
   const navigateTo = (tab: Tab) => setActiveTab(tab);
-
-  const refreshSettings = async () => {
-    if (!session) return;
-    try {
-      const { data, error } = await supabase.from('settings').select('*').eq('user_id', session.user.id).maybeSingle();
-      if (error) {
-        console.error('Error cargando settings:', error);
-        return;
-      }
-      if (data) {
-        setStoreName(data.store_name || 'Mi Negocio');
-        setExchangeRate(data.exchange_rate || 120);
-        setUserName(data.user_name || '');
-      }
-    } catch (err) {
-      console.error('Error en refreshSettings:', err);
-    }
-  };
-
-  useEffect(() => {
-    if (session) refreshSettings();
-  }, [session]);
 
   if (loading) {
     return (
@@ -251,9 +271,6 @@ export default function App() {
                 <li>Copia y pega el contenido de <code className="bg-gray-100 px-1 rounded">schema.sql</code></li>
                 <li>Haz clic en <strong>Run</strong></li>
               </ol>
-              <p className="text-xs text-gray-400 mt-3">
-                Después de ejecutar el SQL, recarga esta página.
-              </p>
             </div>
             <button
               onClick={() => window.location.reload()}
@@ -283,46 +300,57 @@ export default function App() {
   };
 
   return (
-    <AppContext.Provider value={{ session, darkMode, toggleDarkMode, storeName, exchangeRate, refreshSettings, navigateTo, userName, userEmail }}>
-      <div className={`h-full flex flex-col ${darkMode ? 'dark bg-gray-900' : 'bg-gray-50'}`}>
-        <header className="bg-blue-700 dark:bg-gray-800 text-white px-4 py-3 flex items-center justify-between shrink-0 shadow-md">
-          <div>
-            <h1 className="text-lg font-bold">{storeName}</h1>
-            <p className="text-blue-200 dark:text-gray-400 text-xs">
-              👤 {userName || userEmail}
-            </p>
-          </div>
-          <button
-            onClick={() => supabase.auth.signOut()}
-            className="text-xs bg-blue-600 dark:bg-gray-700 px-3 py-1.5 rounded-lg hover:bg-blue-500 transition-colors"
-          >
-            Salir
-          </button>
-        </header>
-
-        <main className="flex-1 overflow-y-auto p-4 pb-20">
-          {renderScreen()}
-        </main>
-
-        <nav className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 shadow-lg z-50">
-          <div className="flex overflow-x-auto" style={{scrollbarWidth: 'none'}}>
-            {TABS.map(tab => (
+    <AppContext.Provider value={{ session, darkMode, toggleDarkMode, storeName, exchangeRate, refreshSettings, navigateTo, userName, userEmail, settingsLoaded }}>
+      <ToastProvider>
+        <div className={`min-h-screen ${darkMode ? 'dark bg-gray-900' : 'bg-gray-50'}`}>
+          <div className="mx-auto max-w-2xl min-h-screen flex flex-col">
+            {/* Header */}
+            <header className="bg-blue-700 dark:bg-gray-800 text-white px-4 py-3 flex items-center justify-between shrink-0 shadow-md">
+              <div>
+                <h1 className="text-lg font-bold text-white">{storeName}</h1>
+                <p className="text-blue-200 dark:text-gray-400 text-xs">
+                  👤 {userName || userEmail}
+                </p>
+              </div>
               <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex flex-col items-center px-3 py-2 min-w-[64px] text-xs transition-colors ${
-                  activeTab === tab.id
-                    ? 'text-blue-600 dark:text-blue-400 font-semibold'
-                    : 'text-gray-500 dark:text-gray-400'
-                }`}
+                onClick={() => supabase.auth.signOut()}
+                className="text-xs bg-blue-600 dark:bg-gray-700 px-3 py-1.5 rounded-lg hover:bg-blue-500 transition-colors text-white"
               >
-                <span className="text-lg mb-0.5">{tab.icon}</span>
-                <span className="whitespace-nowrap">{tab.label}</span>
+                Salir
               </button>
-            ))}
+            </header>
+
+            {/* Content */}
+            <main className="flex-1 overflow-y-auto p-4 pb-20">
+              {settingsLoaded ? renderScreen() : (
+                <div className="text-center py-8 text-gray-500">Cargando configuración...</div>
+              )}
+            </main>
+
+            {/* Bottom Navigation */}
+            <nav className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 shadow-lg z-50">
+              <div className="mx-auto max-w-2xl">
+                <div className="flex overflow-x-auto" style={{scrollbarWidth: 'none'}}>
+                  {TABS.map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`flex flex-col items-center px-3 py-2 min-w-[64px] text-xs transition-colors ${
+                        activeTab === tab.id
+                          ? 'text-blue-600 dark:text-blue-400 font-semibold'
+                          : 'text-gray-500 dark:text-gray-400'
+                      }`}
+                    >
+                      <span className="text-lg mb-0.5">{tab.icon}</span>
+                      <span className="whitespace-nowrap">{tab.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </nav>
           </div>
-        </nav>
-      </div>
+        </div>
+      </ToastProvider>
     </AppContext.Provider>
   );
 }
