@@ -1,11 +1,8 @@
 // ============================================================
 // CONFIGURACIÓN DE SUPABASE
 // ============================================================
-// Para usar esta app:
-// 1. Crea un proyecto en https://supabase.com
-// 2. Copia tu URL y anon key desde Settings > API
-// 3. Pégalos aquí abajo
+// Credenciales del proyecto Supabase
 // ============================================================
 
-export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'TU_SUPABASE_URL_AQUI';
-export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'TU_SUPABASE_ANON_KEY_AQUI';
+export const SUPABASE_URL = 'https://cnjvenkmyvsptsplpoxe.supabase.co';
+export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNuanZlbmtteXZzcHRzcGxwb3hlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE4MzI4OTgsImV4cCI6MjEwNzQwODg5OH0.7Ph9nNn0eCMeR93PFOqwswQVV-f9Pl780TBGXqUvTdc';
