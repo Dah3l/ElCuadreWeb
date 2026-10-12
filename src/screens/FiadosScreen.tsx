@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase, getErrorMessage } from '../lib/supabase';
 import { useApp } from '../App';
+import { useToast } from '../components/Toast';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { formatMoney, toCUP } from '../lib/utils';
 
 interface Debt {
   id: string;
@@ -14,27 +17,30 @@ interface Debt {
 }
 
 export default function FiadosScreen() {
-  const { session, userName, userEmail } = useApp();
+  const { session, exchangeRate } = useApp();
+  const { showToast } = useToast();
   const [debts, setDebts] = useState<Debt[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const [filter, setFilter] = useState<'all' | 'por_cobrar' | 'por_pagar'>('all');
+  const [filter, setFilter] = useState<'pending' | 'paid' | 'all'>('pending');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'por_cobrar' | 'por_pagar'>('all');
   const [personName, setPersonName] = useState('');
   const [amount, setAmount] = useState('');
   const [type, setType] = useState<'por_cobrar' | 'por_pagar'>('por_cobrar');
   const [currency, setCurrency] = useState<'CUP' | 'USD'>('CUP');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   useEffect(() => {
     if (session) loadDebts();
   }, [session]);
 
   const loadDebts = async () => {
+    setLoading(true);
     const { data } = await supabase
       .from('debts')
       .select('*')
       .eq('user_id', session!.user.id)
-      .eq('is_paid', false)
       .order('created_at', { ascending: false });
     if (data) setDebts(data as Debt[]);
     setLoading(false);
@@ -46,7 +52,7 @@ export default function FiadosScreen() {
 
     const { error } = await supabase.from('debts').insert({
       user_id: session!.user.id,
-      user_name: userName || userEmail,
+      user_name: '',
       person_name: personName.trim(),
       type,
       amount: parseFloat(amount),
@@ -57,26 +63,44 @@ export default function FiadosScreen() {
     if (error) { setError(getErrorMessage(error)); return; }
 
     setPersonName(''); setAmount(''); setShowForm(false);
+    showToast('✓ Fiado registrado', 'success');
     loadDebts();
   };
 
   const markPaid = async (id: string) => {
     await supabase.from('debts').update({ is_paid: true }).eq('id', id);
+    showToast('✓ Marcado como pagado', 'success');
     loadDebts();
   };
 
-  const deleteDebt = async (id: string) => {
-    if (!confirm('¿Eliminar este fiado?')) return;
-    await supabase.from('debts').delete().eq('id', id);
+  const markUnpaid = async (id: string) => {
+    await supabase.from('debts').update({ is_paid: false }).eq('id', id);
+    showToast('Marcado como pendiente', 'info');
     loadDebts();
   };
 
-  if (loading) return <div className="text-center py-8 text-gray-500">Cargando fiados...</div>;
+  const deleteDebt = async () => {
+    if (!deleteId) return;
+    const { error } = await supabase.from('debts').delete().eq('id', deleteId);
+    if (error) {
+      showToast('Error al eliminar: ' + getErrorMessage(error), 'error');
+    } else {
+      showToast('Fiado eliminado', 'info');
+      loadDebts();
+    }
+    setDeleteId(null);
+  };
 
-  const filtered = filter === 'all' ? debts : debts.filter(d => d.type === filter);
+  if (loading) return <div className="text-center py-8 text-gray-500 dark:text-gray-400">Cargando fiados...</div>;
 
-  const totalCobrar = debts.filter(d => d.type === 'por_cobrar').reduce((s, d) => s + (d.currency === 'USD' ? d.amount * 120 : d.amount), 0);
-  const totalPagar = debts.filter(d => d.type === 'por_pagar').reduce((s, d) => s + (d.currency === 'USD' ? d.amount * 120 : d.amount), 0);
+  // Filtrar por estado (pendiente/pagado/todos)
+  const byStatus = filter === 'all' ? debts : debts.filter(d => filter === 'pending' ? !d.is_paid : d.is_paid);
+  // Filtrar por tipo
+  const filtered = typeFilter === 'all' ? byStatus : byStatus.filter(d => d.type === typeFilter);
+
+  const pending = debts.filter(d => !d.is_paid);
+  const totalCobrar = pending.filter(d => d.type === 'por_cobrar').reduce((s, d) => s + toCUP(d.amount, d.currency as 'CUP' | 'USD', exchangeRate), 0);
+  const totalPagar = pending.filter(d => d.type === 'por_pagar').reduce((s, d) => s + toCUP(d.amount, d.currency as 'CUP' | 'USD', exchangeRate), 0);
 
   return (
     <div className="animate-fade-in space-y-4">
@@ -94,11 +118,11 @@ export default function FiadosScreen() {
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-xl p-3">
           <p className="text-xs text-green-600 dark:text-green-400">Le deben a ti</p>
-          <p className="text-lg font-bold text-green-700 dark:text-green-300">{totalCobrar.toLocaleString()} CUP</p>
+          <p className="text-lg font-bold text-green-700 dark:text-green-300">{formatMoney(totalCobrar, 'CUP')}</p>
         </div>
         <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl p-3">
           <p className="text-xs text-red-600 dark:text-red-400">Les debes</p>
-          <p className="text-lg font-bold text-red-700 dark:text-red-300">{totalPagar.toLocaleString()} CUP</p>
+          <p className="text-lg font-bold text-red-700 dark:text-red-300">{formatMoney(totalPagar, 'CUP')}</p>
         </div>
       </div>
 
@@ -145,33 +169,49 @@ export default function FiadosScreen() {
         </div>
       )}
 
-      {/* Filter */}
-      <div className="flex gap-2">
-        {(['all', 'por_cobrar', 'por_pagar'] as const).map(f => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium ${filter === f ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}`}
-          >
-            {f === 'all' ? 'Todos' : f === 'por_cobrar' ? 'Me deben' : 'Debo'}
-          </button>
-        ))}
+      {/* Filters */}
+      <div className="space-y-2">
+        <div className="flex gap-2">
+          {([['pending', 'Pendientes'], ['paid', 'Pagados'], ['all', 'Todos']] as const).map(([f, label]) => (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium ${filter === f ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          {([['all', 'Todos'], ['por_cobrar', 'Me deben'], ['por_pagar', 'Debo']] as const).map(([f, label]) => (
+            <button
+              key={f}
+              onClick={() => setTypeFilter(f)}
+              className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium ${typeFilter === f ? 'bg-purple-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* List */}
       <div className="space-y-2">
         {filtered.length === 0 && (
           <div className="text-center py-6 text-gray-400">
-            <p className="text-sm">No hay fiados pendientes</p>
+            <p className="text-sm">No hay registros</p>
           </div>
         )}
         {filtered.map(d => (
-          <div key={d.id} className={`bg-white dark:bg-gray-800 rounded-xl p-3 border ${d.type === 'por_cobrar' ? 'border-green-200 dark:border-green-800' : 'border-red-200 dark:border-red-800'}`}>
+          <div key={d.id} className={`bg-white dark:bg-gray-800 rounded-xl p-3 border ${d.is_paid ? 'border-gray-300 dark:border-gray-600 opacity-60' : d.type === 'por_cobrar' ? 'border-green-200 dark:border-green-800' : 'border-red-200 dark:border-red-800'}`}>
             <div className="flex justify-between items-start">
-              <div>
-                <p className="font-medium text-gray-800 dark:text-white">{d.person_name}</p>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="font-medium text-gray-800 dark:text-white">{d.person_name}</p>
+                  {d.is_paid && <span className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded">Pagado</span>}
+                </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {d.type === 'por_cobrar' ? '📥 Me debe' : '📤 Le debo'} · {d.amount.toLocaleString()} {d.currency}
+                  {d.type === 'por_cobrar' ? '📥 Me debe' : '📤 Le debo'} · {formatMoney(d.amount, d.currency as 'CUP' | 'USD')}
                 </p>
                 <p className="text-xs text-gray-400 mt-0.5">
                   {new Date(d.created_at).toLocaleDateString('es-ES')}
@@ -179,13 +219,27 @@ export default function FiadosScreen() {
                 </p>
               </div>
               <div className="flex gap-1">
-                <button onClick={() => markPaid(d.id)} className="text-green-500 text-xs bg-green-50 dark:bg-green-900/30 px-2 py-1 rounded">✓ Pagado</button>
-                <button onClick={() => deleteDebt(d.id)} className="text-red-400 text-xs p-1">🗑️</button>
+                {!d.is_paid ? (
+                  <button onClick={() => markPaid(d.id)} className="text-green-500 text-xs bg-green-50 dark:bg-green-900/30 px-2 py-1 rounded hover:bg-green-100">✓ Pagado</button>
+                ) : (
+                  <button onClick={() => markUnpaid(d.id)} className="text-blue-500 text-xs bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded hover:bg-blue-100">↺ Revertir</button>
+                )}
+                <button onClick={() => setDeleteId(d.id)} className="text-red-400 text-xs p-1 hover:text-red-600">🗑️</button>
               </div>
             </div>
           </div>
         ))}
       </div>
+
+      <ConfirmDialog
+        open={!!deleteId}
+        title="Eliminar fiado"
+        message="¿Estás seguro de eliminar este registro de fiado?"
+        confirmLabel="Eliminar"
+        danger
+        onConfirm={deleteDebt}
+        onCancel={() => setDeleteId(null)}
+      />
     </div>
   );
 }
