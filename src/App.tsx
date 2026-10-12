@@ -18,17 +18,18 @@ interface AppContextType {
   storeName: string;
   exchangeRate: number;
   refreshSettings: () => void;
+  navigateTo: (tab: Tab) => void;
 }
 export const AppContext = createContext<AppContextType>({} as AppContextType);
 export const useApp = () => useContext(AppContext);
 
-type Tab = 'hoy' | 'ventas' | 'inventario' | 'gastos' | 'caja' | 'fiados' | 'reportes' | 'ajustes';
+export type Tab = 'hoy' | 'ventas' | 'gastos' | 'inventario' | 'caja' | 'fiados' | 'reportes' | 'ajustes';
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'hoy', label: 'Hoy', icon: '📊' },
   { id: 'ventas', label: 'Ventas', icon: '💰' },
-  { id: 'inventario', label: 'Inventario', icon: '📦' },
   { id: 'gastos', label: 'Gastos', icon: '💸' },
+  { id: 'inventario', label: 'Inventario', icon: '📦' },
   { id: 'caja', label: 'Caja', icon: '🏦' },
   { id: 'fiados', label: 'Fiados', icon: '📝' },
   { id: 'reportes', label: 'Reportes', icon: '📈' },
@@ -181,6 +182,8 @@ export default function App() {
 
   const toggleDarkMode = () => setDarkMode(!darkMode);
 
+  const navigateTo = (tab: Tab) => setActiveTab(tab);
+
   const refreshSettings = async () => {
     if (!session) return;
     try {
@@ -266,7 +269,7 @@ export default function App() {
   };
 
   return (
-    <AppContext.Provider value={{ session, darkMode, toggleDarkMode, storeName, exchangeRate, refreshSettings }}>
+    <AppContext.Provider value={{ session, darkMode, toggleDarkMode, storeName, exchangeRate, refreshSettings, navigateTo }}>
       <div className={`h-full flex flex-col ${darkMode ? 'dark bg-gray-900' : 'bg-gray-50'}`}>
         <header className="bg-blue-700 dark:bg-gray-800 text-white px-4 py-3 flex items-center justify-between shrink-0 shadow-md">
           <div>
